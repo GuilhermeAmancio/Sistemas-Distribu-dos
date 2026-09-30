@@ -19,11 +19,17 @@
 
     <dependencies>
 
-        <dependency>
-            <groupId>com.rabbitmq</groupId>
-            <artifactId>amqp-client</artifactId>
-            <version>5.36.0</version>
-        </dependency>
+    <dependency>
+        <groupId>com.rabbitmq</groupId>
+        <artifactId>amqp-client</artifactId>
+        <version>5.36.0</version>
+    </dependency>
+
+    <dependency>
+        <groupId>org.jline</groupId>
+        <artifactId>jline</artifactId>
+        <version>3.30.6</version>
+    </dependency>
 
     </dependencies>
 

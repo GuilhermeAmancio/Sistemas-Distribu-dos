@@ -6,11 +6,12 @@ public class Main{
     public static void main(String[] args){
         Scanner scanner = new Scanner(System.in);
 
-        System.out.print("Digite seu usuario: ");
+        System.out.print("Digite seu usuario: "); //estabelecimento do usuario que esta usando o serviço
         String usuario = scanner.nextLine().trim();
 
+        //estabelecimento da conexao com o rabbit, é necessário alterar o ip para o ip atual da instância
         RabbitMQService service = new RabbitMQService(
-            "98.92.33.130",
+            "34.237.51.175",
             "admin",
             "password",
             usuario
@@ -18,7 +19,7 @@ public class Main{
 
         try {
             service.conectar();
-            service.criarFilaUsuario();
+            service.criarFilaUsuario(); //cria a fila com o nome do usuario no rabbbit
 
             ChatCLI cli = new ChatCLI(service);
             cli.iniciar();

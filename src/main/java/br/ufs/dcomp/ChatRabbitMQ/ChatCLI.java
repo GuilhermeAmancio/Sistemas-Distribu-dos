@@ -1,22 +1,30 @@
 package br.ufs.dcomp.ChatRabbitMQ;
 
-import java.util.Scanner;
+import org.jline.reader.LineReader;
+import org.jline.reader.LineReaderBuilder;
 
 public class ChatCLI {
 
     private final RabbitMQService service;
     private String destinatarioAtual = "";
 
+    private LineReader leitor;
+
     public ChatCLI(RabbitMQService service) {
         this.service = service;
     }
 
     public void iniciar() {
-        Scanner scanner = new Scanner(System.in);
         String usuarioLogado = service.getUsernameUsuario();
 
-        Thread threadReceba = new Thread(new MensagemRecebida(service));
+        leitor = LineReaderBuilder.builder().build();
 
+        
+        //esta thread basicamente vai servir para que o programa consiga enviar mensagens pela thread principal
+        //mas também receber mensagens por esta thread secundária
+        Thread threadReceba = new Thread(new MensagemRecebida(service, leitor));
+
+        threadReceba.setDaemon(true);
         threadReceba.start();
 
         // 1. Loop principal de leitura do teclado
@@ -26,13 +34,16 @@ public class ChatCLI {
                     ? "<<: " 
                     : "@" + destinatarioAtual + "<< ";
 
-            System.out.print(prompt);
+            String entrada;
 
-            if (!scanner.hasNextLine()) {
+            try {
+                entrada = leitor.readLine(prompt);
+            } catch (Exception e) {
+                System.err.println("[Erro ao ler entrada: " + e.getMessage() + "]");
                 break;
             }
 
-            String entrada = scanner.nextLine().trim();
+            entrada = entrada.trim();
 
             if (entrada.isEmpty()) {
                 continue;
@@ -53,15 +64,17 @@ public class ChatCLI {
 
             // 3. Validação e envio de mensagem
             if (destinatarioAtual.isEmpty()) {
-                System.out.println("[Erro: Defina um destinatário primeiro. Ex: @joao<<]");
-            } else {
-                try {
-                    // Chama a função da Pessoa 1 para enviar via RabbitMQ
-                    service.enviarMensagem(destinatarioAtual, entrada);
-                } catch (Exception e) {
-                    System.err.println("[Erro ao enviar mensagem: " + e.getMessage() + "]");
-                }
+               leitor.printAbove("[Erro: Defina um destinatário primeiro. Ex: @joao<<]");
+               continue;
+            } 
+                
+            try {
+                // Chama a função da Pessoa 1 para enviar via RabbitMQ
+                service.enviarMensagem(destinatarioAtual, entrada);
+            } catch (Exception e) {
+                leitor.printAbove("[Erro ao enviar mensagem: " + e.getMessage() + "]");
             }
+            
         }
     }
 }
