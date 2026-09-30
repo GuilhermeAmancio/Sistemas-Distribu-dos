@@ -15,12 +15,16 @@ public class ChatCLI {
         Scanner scanner = new Scanner(System.in);
         String usuarioLogado = service.getUsernameUsuario();
 
+        Thread threadReceba = new Thread(new MensagemRecebida(service));
+
+        threadReceba.start();
+
         // 1. Loop principal de leitura do teclado
         while (true) {
             // Formata o prompt: "User:" se não houver destinatário ou "@destinatario>>"
             String prompt = destinatarioAtual.isEmpty() 
-                    ? "User: " 
-                    : "@" + destinatarioAtual + ">> ";
+                    ? "<<: " 
+                    : "@" + destinatarioAtual + "<< ";
 
             System.out.print(prompt);
 

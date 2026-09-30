@@ -4,6 +4,8 @@ import com.rabbitmq.client.*;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.function.Consumer;
 
 public class RabbitMQService {
@@ -14,6 +16,7 @@ public class RabbitMQService {
 
     private Connection connection;
     private Channel channel;
+    private Channel receiveChannel;
 
     private String usernameUsuario;
 
@@ -40,6 +43,7 @@ public class RabbitMQService {
 
         connection = factory.newConnection();
         channel = connection.createChannel();
+        receiveChannel = connection.createChannel();
 
         System.out.println("Conectado ao RabbitMQ.");
     }
@@ -48,7 +52,7 @@ public class RabbitMQService {
 
         channel.queueDeclare(
                 usernameUsuario,
-                false,
+                true,
                 false,
                 false,
                 null
@@ -61,7 +65,12 @@ public class RabbitMQService {
 
     public void enviarMensagem(
             String destinatario,
-            String mensagem) throws IOException {
+            String texto) throws IOException {
+
+        LocalDateTime agora = LocalDateTime.now();
+        DateTimeFormatter formato = DateTimeFormatter.ofPattern("dd/MM/yyyy 'às' HH:mm");
+        String dataHora = agora.format(formato);
+        String mensagem = usernameUsuario + "|" + destinatario + "|" + texto + "|" + dataHora; 
 
         channel.basicPublish(
                 "",
@@ -95,7 +104,7 @@ public class RabbitMQService {
             }
         };
 
-        channel.basicConsume(
+        receiveChannel.basicConsume(
                 usernameUsuario,
                 true,
                 rabbitConsumer
@@ -112,6 +121,10 @@ public class RabbitMQService {
 
             if (channel != null && channel.isOpen()) {
                 channel.close();
+            }
+
+            if (receiveChannel != null && receiveChannel.isOpen()){
+                receiveChannel.close();                
             }
 
             if (connection != null && connection.isOpen()) {
