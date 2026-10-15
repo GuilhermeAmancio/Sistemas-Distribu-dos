@@ -8,6 +8,7 @@ public class ChatCLI {
     private final RabbitMQService service;
     private String destinatarioAtual = "";
     private LineReader leitor;
+    private final GroupService groupService = new GroupService();
 
     public ChatCLI(RabbitMQService service) {
         this.service = service;
@@ -40,8 +41,51 @@ public class ChatCLI {
                 continue;
             }
 
+            if(entrada.startsWith("!")) {
+                String[] partes = entrada.split(" ", 3);
+
+                switch (partes[0]) {
+                    case "!addGroup":
+                        if (partes.length == 2) {
+                            leitor.printAbove(groupService.criarGrupo(partes[1], service.getUsernameUsuario()));
+                        } else {
+                            leitor.printAbove("Metodo de uso: !addGroup <grupo>");
+                        }
+                        break;
+
+                    case "!addUser":
+                        if (partes.length == 3) {
+                            leitor.printAbove(groupService.adicionarUsuario(partes[1], partes[2]));
+                        } else {
+                            leitor.printAbove("Metodo de uso: !addUser <usuario> <grupo>");
+                        }
+                        break;
+
+                    case "!removeUser":
+                        if (partes.length == 3) {
+                            leitor.printAbove(groupService.removerUsuario(partes[1], partes[2]));
+                        } else {
+                            leitor.printAbove("Metodo de uso: !removeUser <usuario> <grupo>");
+                        }
+                        break;
+
+                    case "!removeGroup":
+                        if (partes.length == 2) {
+                            leitor.printAbove(groupService.removerGrupo(partes[1]));
+                        } else {
+                            leitor.printAbove("Metodo de uso: !removeGroup <grupo>");
+                        }
+                        break;
+
+                    default:
+                        leitor.printAbove("Comando desconhecido");
+                }
+
+                continue;
+            }
+
             if (entrada.equalsIgnoreCase("/sair")) {
-                System.out.println("Encerrando o chat...");
+                leitor.printAbove("Encerrando o chat...");
                 break;
             }
 
