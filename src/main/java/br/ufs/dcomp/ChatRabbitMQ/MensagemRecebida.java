@@ -2,38 +2,39 @@ package br.ufs.dcomp.ChatRabbitMQ;
 
 import org.jline.reader.LineReader;
 
-
-public class MensagemRecebida implements Runnable{
+public class MensagemRecebida implements Runnable {
     private final RabbitMQService service;
     private final LineReader leitor;
 
-    public MensagemRecebida(RabbitMQService service, LineReader leitor){
+    public MensagemRecebida(RabbitMQService service, LineReader leitor) {
         this.service = service;
         this.leitor = leitor;
     }
 
     @Override
-    public void run(){
-        try{
-            service.receberMensagens(mensagem ->{
-                String[] partes = mensagem.split("\\|"); //comando para separar a mensagem do formato que ela chega com |
-                if (partes.length < 4){
-                    leitor.printAbove("Erro: Formato invalido da mensagem");
-                    return;
+    public void run() {
+        try {
+            // O serviço agora consome o objeto de mensagem do Protobuf
+            service.receberMensagens(mensagem -> {
+                String emissor = mensagem.getEmissor();
+                String data = mensagem.getData();
+                String hora = mensagem.getHora();
+                String grupo = mensagem.getGrupo();
+                String texto = MensagemCodec.obterTexto(mensagem);
+
+                String mensagemFormatada;
+
+                // Verifica se a mensagem veio de um grupo ou individualmente
+                if (grupo == null || grupo.isEmpty()) {
+                    mensagemFormatada = "(" + data + " às " + hora + ") @" + emissor + " diz: " + texto;
+                } else {
+                    mensagemFormatada = "(" + data + " às " + hora + ") " + emissor + "#" + grupo + " diz: " + texto;
                 }
 
-                Mensagem message = new Mensagem(partes[0], partes[1], partes[2], partes[3]); //estabelece a mensagem em quatro campos
-                
-                //formata a mensagem no formato pedido
-                String mensagemFormatada = "(" + message.getDataHora() + ") @" + message.getRemetente() + " diz: " + message.getTexto();
-                //printabove em todas as classes deste codigo ajuda a imprimir mensagens e erros sem quebrar o que esta sendo
-                //digitado pelo usuario
                 leitor.printAbove(mensagemFormatada);
             });
-        } catch (Exception e){
-            leitor.printAbove(
-                "Erro ao receber mensagem: " + e.getMessage()
-            );
+        } catch (Exception e) {
+            leitor.printAbove("Erro ao receber mensagem: " + e.getMessage());
         }
     }
 }
