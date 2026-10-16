@@ -11,7 +11,7 @@ public class Main{
 
         //estabelecimento da conexao com o rabbit, é necessário alterar o ip para o ip atual da instância
         RabbitMQService service = new RabbitMQService(
-            "44.222.62.194",
+            "18.234.212.48",
             "admin",
             "password",
             usuario
