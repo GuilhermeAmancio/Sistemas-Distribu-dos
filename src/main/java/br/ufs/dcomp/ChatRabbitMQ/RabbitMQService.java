@@ -50,9 +50,7 @@ public class RabbitMQService {
      * de envio e recebimento.
      */
     public void conectar() throws Exception {
-
         ConnectionFactory factory = new ConnectionFactory();
-
         factory.setHost(host);
         factory.setPort(5672);
         factory.setUsername(username);
@@ -61,7 +59,6 @@ public class RabbitMQService {
         factory.setConnectionTimeout(10000);
 
         connection = factory.newConnection();
-
         channel = connection.createChannel();
         receiveChannel = connection.createChannel();
 
@@ -72,9 +69,7 @@ public class RabbitMQService {
      * Cria a fila do usuário.
      */
     public void criarFilaUsuario() throws IOException {
-
         verificarConexao();
-
         channel.queueDeclare(
                 usernameUsuario,
                 true,
@@ -82,7 +77,6 @@ public class RabbitMQService {
                 false,
                 null
         );
-
         System.out.println("Fila criada: " + usernameUsuario);
     }
 
@@ -113,6 +107,36 @@ public class RabbitMQService {
                 destinatario,
                 propriedades,
                 mensagem.getBytes(StandardCharsets.UTF_8)
+        );
+    }
+
+    /**
+     * Envia uma mensagem de texto para um grupo.
+     */
+    public void enviarMensagemGrupo(
+            String nomeGrupo,
+            String texto) throws IOException {
+
+        verificarConexao();
+
+        byte[] payload = MensagemCodec.serializarTexto(
+                usernameUsuario,
+                nomeGrupo,
+                texto
+        );
+
+        AMQP.BasicProperties propriedades =
+                new AMQP.BasicProperties.Builder()
+                        .contentType("text/plain")
+                        .contentEncoding("UTF-8")
+                        .deliveryMode(2)
+                        .build();
+
+        channel.basicPublish(
+                nomeGrupo,
+                "",
+                propriedades,
+                payload
         );
     }
 
@@ -148,6 +172,56 @@ public class RabbitMQService {
     }
 
     /**
+     * Publica uma mensagem Protobuf contendo um arquivo para um grupo.
+     * Utiliza o exchange do tipo fanout correspondente ao grupo.
+     */
+    public void enviarArquivoGrupo(
+            String nomeGrupo,
+            byte[] dados) throws IOException {
+
+        verificarConexao();
+
+        if (dados == null || dados.length == 0) {
+            throw new IOException(
+                    "Não é possível enviar um arquivo vazio ou sem dados."
+            );
+        }
+
+        AMQP.BasicProperties propriedades =
+                new AMQP.BasicProperties.Builder()
+                        .contentType(TIPO_PROTOBUF)
+                        .deliveryMode(2)
+                        .build();
+
+        channel.basicPublish(
+                nomeGrupo,
+                "",
+                propriedades,
+                dados
+        );
+    }
+
+    public void criarExchangeGrupo(String nomeGrupo) throws IOException {
+        verificarConexao();
+        channel.exchangeDeclare(nomeGrupo, "fanout", true);
+    }
+
+    public void adicionarUsuarioAoExchange(String usuario, String nomeGrupo) throws IOException {
+        verificarConexao();
+        channel.queueBind(usuario, nomeGrupo, "");
+    }
+
+    public void removerUsuarioDoExchange(String usuario, String nomeGrupo) throws IOException {
+        verificarConexao();
+        channel.queueUnbind(usuario, nomeGrupo, "");
+    }
+
+    public void removerExchangeGrupo(String nomeGrupo) throws IOException {
+        verificarConexao();
+        channel.exchangeDelete(nomeGrupo);
+    }
+
+    /**
      * Registra o consumidor da fila do usuário.
      *
      * Mensagens Protobuf são interpretadas como arquivos.
@@ -169,30 +243,15 @@ public class RabbitMQService {
                             AMQP.BasicProperties properties,
                             byte[] body) throws IOException {
 
-                        System.out.println(
-                                "[DEBUG] Mensagem recebida da fila. Tipo: "
-                                + properties.getContentType()
-                                + ", tamanho: "
-                                + body.length
-                                + " bytes"
-                        );
-
                         String tipoConteudo = properties.getContentType();
 
                         if (TIPO_PROTOBUF.equals(tipoConteudo)) {
-
-                            processarMensagemProtobuf(
-                                    body,
-                                    consumidor
-                            );
-
+                            processarMensagemProtobuf(body, consumidor);
                         } else {
-
                             String mensagem = new String(
                                     body,
                                     StandardCharsets.UTF_8
                             );
-
                             consumidor.accept(mensagem);
                         }
                     }
@@ -230,10 +289,19 @@ public class RabbitMQService {
             String tipoMime = conteudo.getTipo();
 
             if (nomeArquivo == null || nomeArquivo.isBlank()) {
-                consumidor.accept(
-                        "Erro: o arquivo recebido não possui nome."
-                );
-                return;
+                if (conteudo.hasCorpo() && (tipoMime == null || tipoMime.equals("text/plain"))) {
+                    String texto = conteudo.getCorpo().toString(StandardCharsets.UTF_8);
+                    String dataHora = mensagem.getData() + " às " + mensagem.getHora();
+                    String grupo = mensagem.getGrupo();
+                    String emissor = mensagem.getEmissor();
+
+                    if (!grupo.isEmpty()) {
+                        consumidor.accept("(" + dataHora + ") #" + grupo + " <=> @" + emissor + " diz: " + texto);
+                    } else {
+                        consumidor.accept("(" + dataHora + ") @" + emissor + " diz: " + texto);
+                    }
+                    return;
+                }
             }
 
             /*
@@ -280,32 +348,21 @@ public class RabbitMQService {
                     conteudo.getCorpo().toByteArray()
             );
 
-            consumidor.accept(
-                    "[Arquivo recebido] "
-                    + nomeSeguro
-                    + " ("
-                    + tipoMime
-                    + ")"
-            );
+            String dataHora = mensagem.getData() + " às " + mensagem.getHora();
+            String remetente = mensagem.getEmissor();
+            String grupo = mensagem.getGrupo();
 
-            consumidor.accept(
-                    "[Arquivo salvo em] "
-                    + destino
-            );
+            if (!grupo.isEmpty()) {
+                consumidor.accept("(" + dataHora + ") Arquivo \"" + nomeSeguro + "\" recebido do grupo #" + grupo + " por @" + remetente + " !");
+            } else {
+                consumidor.accept("(" + dataHora + ") Arquivo \"" + nomeSeguro + "\" recebido de @" + remetente + " !");
+            }
+            consumidor.accept("[Arquivo salvo em] " + destino);
 
         } catch (InvalidProtocolBufferException e) {
-
-            System.err.println(
-                    "Erro ao interpretar mensagem Protobuf: "
-                    + e.getMessage()
-            );
-
+            System.err.println("Erro ao interpretar mensagem Protobuf: " + e.getMessage());
         } catch (IOException e) {
-
-            System.err.println(
-                    "Erro ao salvar o arquivo recebido: "
-                    + e.getMessage()
-            );
+            System.err.println("Erro ao salvar o arquivo recebido: " + e.getMessage());
         }
     }
 
@@ -320,23 +377,14 @@ public class RabbitMQService {
      * Verifica se a conexão e o canal de envio estão disponíveis.
      */
     private void verificarConexao() throws IOException {
-
         if (connection == null || !connection.isOpen()) {
-            throw new IOException(
-                    "Não existe uma conexão ativa com o RabbitMQ."
-            );
+            throw new IOException("Não existe uma conexão ativa com o RabbitMQ.");
         }
-
         if (channel == null || !channel.isOpen()) {
-            throw new IOException(
-                    "O canal de envio do RabbitMQ não está disponível."
-            );
+            throw new IOException("O canal de envio do RabbitMQ não está disponível.");
         }
-
         if (receiveChannel == null || !receiveChannel.isOpen()) {
-            throw new IOException(
-                    "O canal de recebimento do RabbitMQ não está disponível."
-            );
+            throw new IOException("O canal de recebimento do RabbitMQ não está disponível.");
         }
     }
 
@@ -344,25 +392,18 @@ public class RabbitMQService {
      * Fecha os canais e a conexão com o RabbitMQ.
      */
     public void fechar() {
-
         try {
             if (channel != null && channel.isOpen()) {
                 channel.close();
             }
-
             if (receiveChannel != null && receiveChannel.isOpen()) {
                 receiveChannel.close();
             }
-
             if (connection != null && connection.isOpen()) {
                 connection.close();
             }
-
         } catch (Exception e) {
-            System.err.println(
-                    "Erro ao fechar a conexão: "
-                    + e.getMessage()
-            );
+            e.printStackTrace();
         }
     }
 }

@@ -17,6 +17,8 @@ public class ChatCLI {
 
     private LineReader leitor;
 
+    private final GroupService groupService = new GroupService();
+
     /*
      * Executor responsável por executar uploads em segundo plano.
      */
@@ -42,7 +44,7 @@ public class ChatCLI {
 
             String prompt = destinatarioAtual.isEmpty()
                     ? "<< "
-                    : "@" + destinatarioAtual + "<< ";
+                    : destinatarioAtual + "<< ";
 
             String entrada;
 
@@ -79,21 +81,21 @@ public class ChatCLI {
             /*
              * Comando para selecionar um destinatário.
              */
-            if (entrada.startsWith("@")) {
+            if (entrada.startsWith("@") || entrada.startsWith("#")) {
 
-                String novoDestinatario =
+                String nomeDestino =
                         entrada.substring(1).trim();
 
-                if (novoDestinatario.isEmpty()) {
+                if (nomeDestino.isEmpty()) {
 
                     leitor.printAbove(
-                            "[Erro: informe um usuário após @]"
+                            "[Erro: informe um nome após o símbolo]"
                     );
 
                     continue;
                 }
 
-                destinatarioAtual = novoDestinatario;
+                destinatarioAtual = entrada;
 
                 continue;
             }
@@ -116,7 +118,7 @@ public class ChatCLI {
 
                 leitor.printAbove(
                         "[Erro: defina um destinatário primeiro. "
-                                + "Exemplo: @joao]"
+                                + "Exemplo: @joao ou #grupo]"
                 );
 
                 continue;
@@ -126,12 +128,13 @@ public class ChatCLI {
              * Envio de mensagens textuais.
              */
             try {
-
-                service.enviarMensagem(
-                        destinatarioAtual,
-                        entrada
-                );
-
+                if (destinatarioAtual.startsWith("#")) {
+                    String nomeGrupo = destinatarioAtual.substring(1);
+                    service.enviarMensagemGrupo(nomeGrupo, entrada);
+                } else {
+                    String nomeUsuario = destinatarioAtual.substring(1);
+                    service.enviarMensagem(nomeUsuario, entrada);
+                }
             } catch (Exception e) {
 
                 leitor.printAbove(
@@ -152,16 +155,66 @@ public class ChatCLI {
      * Trata os comandos da interface.
      */
     private void tratarComando(String entrada) {
+        String[] partes = entrada.split(" ", 3);
 
-        if (entrada.startsWith("!upload")) {
+        try {
+            switch (partes[0]) {
+                case "!addGroup":
+                    if (partes.length == 2) {
+                        String nomeGrupo = partes[1];
+                        String resposta = groupService.criarGrupo(nomeGrupo, service.getUsernameUsuario());
+                        service.criarExchangeGrupo(nomeGrupo);
+                        service.adicionarUsuarioAoExchange(service.getUsernameUsuario(), nomeGrupo);
+                        leitor.printAbove(resposta);
+                    } else {
+                        leitor.printAbove("Método de uso: !addGroup <grupo>");
+                    }
+                    break;
 
-            tratarUpload(entrada);
+                case "!addUser":
+                    if (partes.length == 3) {
+                        String usuarioAlvo = partes[1];
+                        String nomeGrupo = partes[2];
+                        String resposta = groupService.adicionarUsuario(usuarioAlvo, nomeGrupo);
+                        service.adicionarUsuarioAoExchange(usuarioAlvo, nomeGrupo);
+                        leitor.printAbove(resposta);
+                    } else {
+                        leitor.printAbove("Método de uso: !addUser <usuário> <grupo>");
+                    }
+                    break;
 
-        } else {
+                case "!removeUser":
+                    if (partes.length == 3) {
+                        String usuarioAlvo = partes[1];
+                        String nomeGrupo = partes[2];
+                        String resposta = groupService.removerUsuario(usuarioAlvo, nomeGrupo);
+                        service.removerUsuarioDoExchange(usuarioAlvo, nomeGrupo);
+                        leitor.printAbove(resposta);
+                    } else {
+                        leitor.printAbove("Método de uso: !removeUser <usuário> <grupo>");
+                    }
+                    break;
 
-            leitor.printAbove(
-                    "[Comando desconhecido: " + entrada + "]"
-            );
+                case "!removeGroup":
+                    if (partes.length == 2) {
+                        String nomeGrupo = partes[1];
+                        String resposta = groupService.removerGrupo(nomeGrupo);
+                        service.removerExchangeGrupo(nomeGrupo);
+                        leitor.printAbove(resposta);
+                    } else {
+                        leitor.printAbove("Método de uso: !removeGroup <grupo>");
+                    }
+                    break;
+
+                case "!upload":
+                    tratarUpload(entrada);
+                    break;
+
+                default:
+                    leitor.printAbove("Comando desconhecido");
+            }
+        } catch (Exception e) {
+            leitor.printAbove("[Erro ao executar comando no RabbitMQ: " + e.getMessage() + "]");
         }
     }
 
@@ -174,7 +227,7 @@ public class ChatCLI {
 
             leitor.printAbove(
                     "[Erro: selecione um destinatário antes de enviar "
-                            + "um arquivo. Exemplo: @marcio]"
+                            + "um arquivo. Exemplo: @marcio ou #grupo]"
             );
 
             return;
@@ -280,7 +333,7 @@ public class ChatCLI {
         leitor.printAbove(
                 "Enviando \""
                         + nomeArquivo
-                        + "\" para @"
+                        + "\" para "
                         + destinatarioFinal
                         + "."
         );
@@ -291,22 +344,28 @@ public class ChatCLI {
         executorUploads.submit(() -> {
 
             try {
+                String grupoParam = destinatarioFinal.startsWith("#") ? destinatarioFinal.substring(1) : "";
 
                 byte[] dados = ArquivoService.prepararArquivo(
                         service.getUsernameUsuario(),
-                        "",
+                        grupoParam,
                         caminho.toString()
                 );
 
-                service.enviarArquivo(
-                        destinatarioFinal,
-                        dados
-                );
+                if (destinatarioFinal.startsWith("#")) {
+                    String nomeGrupo = destinatarioFinal.substring(1);
+                    service.enviarArquivoGrupo(nomeGrupo, dados);
+                } else {
+                    String nomeUsuario = destinatarioFinal.startsWith("@")
+                            ? destinatarioFinal.substring(1)
+                            : destinatarioFinal;
+                    service.enviarArquivo(nomeUsuario, dados);
+                }
 
                 leitor.printAbove(
                         "Arquivo \""
                                 + nomeArquivo
-                                + "\" foi enviado para @"
+                                + "\" foi enviado para "
                                 + destinatarioFinal
                                 + " !"
                 );
