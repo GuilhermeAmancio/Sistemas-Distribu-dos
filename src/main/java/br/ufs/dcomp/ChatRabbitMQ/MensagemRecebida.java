@@ -23,7 +23,12 @@ public class MensagemRecebida implements Runnable {
                 // Mensagens de arquivo: exibe a notificação
                 // sem tentar interpretá-las como mensagens de texto.
                 if (mensagem.startsWith("[Arquivo recebido] ")
-                        || mensagem.startsWith("[Arquivo salvo em] ")) {
+                        || mensagem.startsWith("[Arquivo salvo em] ") 
+                        || mensagem.startsWith("Erro")
+                        || (mensagem.startsWith("(")
+                            && (mensagem.contains(") Arquivo \"")
+                                || mensagem.contains(") @")
+                                || mensagem.contains(") #")))) {
                     leitor.printAbove(mensagem);
                     return;
                 }

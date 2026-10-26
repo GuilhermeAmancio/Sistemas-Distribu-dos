@@ -9,10 +9,12 @@ import com.rabbitmq.client.DefaultConsumer;
 import com.rabbitmq.client.Envelope;
 
 import java.io.IOException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.function.Consumer;
 
 public class RabbitMQService {
@@ -127,7 +129,7 @@ public class RabbitMQService {
 
         AMQP.BasicProperties propriedades =
                 new AMQP.BasicProperties.Builder()
-                        .contentType("text/plain")
+                        .contentType(TIPO_PROTOBUF)
                         .contentEncoding("UTF-8")
                         .deliveryMode(2)
                         .build();
@@ -289,7 +291,7 @@ public class RabbitMQService {
             String tipoMime = conteudo.getTipo();
 
             if (nomeArquivo == null || nomeArquivo.isBlank()) {
-                if (conteudo.hasCorpo() && (tipoMime == null || tipoMime.equals("text/plain"))) {
+                if (!conteudo.getCorpo().isEmpty() && (tipoMime == null || tipoMime.equals("text/plain"))) {
                     String texto = conteudo.getCorpo().toString(StandardCharsets.UTF_8);
                     String dataHora = mensagem.getData() + " às " + mensagem.getHora();
                     String grupo = mensagem.getGrupo();
@@ -320,33 +322,35 @@ public class RabbitMQService {
                 return;
             }
 
+            Path destino = salvarSemSobrescrever(nomeSeguro.toString(), conteudo.getCorpo().toByteArray());
+
             /*
              * Cria a pasta de recebimento se ela ainda não existir.
              */
-            Files.createDirectories(PASTA_RECEBIDOS);
+            //Files.createDirectories(PASTA_RECEBIDOS);
 
-            Path destino = PASTA_RECEBIDOS
-                    .resolve(nomeSeguro.toString())
-                    .normalize();
+            //Path destino = PASTA_RECEBIDOS
+                    //.resolve(nomeSeguro.toString())
+                   // .normalize();
 
             /*
              * Confirma que o destino permanece dentro da pasta
              * destinada aos arquivos recebidos.
              */
-            if (!destino.startsWith(PASTA_RECEBIDOS)) {
-                consumidor.accept("Erro: caminho de destino inválido.");
-                return;
-            }
+            //if (!destino.startsWith(PASTA_RECEBIDOS)) {
+           //     consumidor.accept("Erro: caminho de destino inválido.");
+             //   return;
+            //}
 
             /*
              * Salva os bytes originais do arquivo.
              * Se já existir um arquivo com o mesmo nome, ele será
              * substituído.
              */
-            Files.write(
-                    destino,
-                    conteudo.getCorpo().toByteArray()
-            );
+           // Files.write(
+             //       destino,
+               //     conteudo.getCorpo().toByteArray()
+            //);
 
             String dataHora = mensagem.getData() + " às " + mensagem.getHora();
             String remetente = mensagem.getEmissor();
@@ -360,9 +364,54 @@ public class RabbitMQService {
             consumidor.accept("[Arquivo salvo em] " + destino);
 
         } catch (InvalidProtocolBufferException e) {
-            System.err.println("Erro ao interpretar mensagem Protobuf: " + e.getMessage());
+            String erro = "Erro: nao foi possivel interpretar a mensagem recebida. ";
+            System.err.println(erro + " Detalhes: " + e.getMessage());
+            consumidor.accept(erro);
         } catch (IOException e) {
-            System.err.println("Erro ao salvar o arquivo recebido: " + e.getMessage());
+            String erro = "Erro ao salvar o arquivo recebido: " + e.getMessage();
+            System.err.println(erro);
+            consumidor.accept(erro);
+        } catch (RuntimeException e) {
+            String erro = "Erro ao processar o conteudo recebido: " + e.getMessage();
+            System.err.println(erro);
+            consumidor.accept(erro);
+        }
+    }
+
+    private Path salvarSemSobrescrever(String nomeArquivo, byte[] bytes) throws IOException {
+        Files.createDirectories(PASTA_RECEBIDOS);
+
+        Path nomePath = Paths.get(nomeArquivo).getFileName();
+        if (nomePath == null || nomePath.toString().isBlank()) {
+            throw new IOException("Nome de arquivo invalido.");
+        }
+
+        String nome = nomePath.toString();
+        int ponto = nome.lastIndexOf('.');
+        String base = (ponto > 0) ? nome.substring(0, ponto) : nome;
+        String extensao = (ponto > 0) ? nome.substring(ponto) : "";
+
+        for (int contador = 0; ; contador ++) {
+            String nomeCandidato = contador == 0
+                    ? nome
+                    : base + " (" + contador + ")" + extensao;
+
+            Path destino = PASTA_RECEBIDOS.resolve(nomeCandidato).normalize();
+            if (!destino.startsWith(PASTA_RECEBIDOS)) {
+                throw new IOException("Caminho de destino invalido.");
+            }
+
+            try {
+                Files.write(
+                    destino,
+                    bytes,
+                    StandardOpenOption.CREATE_NEW,
+                    StandardOpenOption.WRITE
+                );
+                return destino;
+            } catch (FileAlreadyExistsException e) {
+                //ja existe, tenta o prox nome disponivel
+            }
         }
     }
 
