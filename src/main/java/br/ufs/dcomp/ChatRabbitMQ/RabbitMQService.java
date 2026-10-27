@@ -324,34 +324,6 @@ public class RabbitMQService {
 
             Path destino = salvarSemSobrescrever(nomeSeguro.toString(), conteudo.getCorpo().toByteArray());
 
-            /*
-             * Cria a pasta de recebimento se ela ainda não existir.
-             */
-            //Files.createDirectories(PASTA_RECEBIDOS);
-
-            //Path destino = PASTA_RECEBIDOS
-                    //.resolve(nomeSeguro.toString())
-                   // .normalize();
-
-            /*
-             * Confirma que o destino permanece dentro da pasta
-             * destinada aos arquivos recebidos.
-             */
-            //if (!destino.startsWith(PASTA_RECEBIDOS)) {
-           //     consumidor.accept("Erro: caminho de destino inválido.");
-             //   return;
-            //}
-
-            /*
-             * Salva os bytes originais do arquivo.
-             * Se já existir um arquivo com o mesmo nome, ele será
-             * substituído.
-             */
-           // Files.write(
-             //       destino,
-               //     conteudo.getCorpo().toByteArray()
-            //);
-
             String dataHora = mensagem.getData() + " às " + mensagem.getHora();
             String remetente = mensagem.getEmissor();
             String grupo = mensagem.getGrupo();
